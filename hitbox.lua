@@ -1,6 +1,5 @@
--- Load Kavo UI
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua"))()
-local Window = Library.CreateLib("Universal Hitbox UI", "DarkTheme")
+local Window = Library.CreateLib("Da Hood Universal Hitbox UI", "DarkTheme")
 local Tab = Window:NewTab("Hitbox")
 local Section = Tab:NewSection("Hitbox Controls")
 
