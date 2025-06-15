@@ -85,7 +85,7 @@ local function updateHitboxes()
     local activeParts = {}
 
     for _, player in pairs(Players:GetPlayers()) do
-        if player ~= lp and player.Character then
+        if player.Character then
             local targetPart = player.Character:FindFirstChild(config.Hitpart)
 
             if not targetPart then
@@ -113,7 +113,6 @@ end
 
 -- Connect Player.CharacterAdded to immediately apply hitbox when a player respawns
 Players.PlayerAdded:Connect(function(player)
-    if player == lp then return end
     player.CharacterAdded:Connect(function()
         task.wait(0.5)
         if getgenv().Config.Enabled then
@@ -124,22 +123,20 @@ end)
 
 -- Also for existing players
 for _, player in pairs(Players:GetPlayers()) do
-    if player ~= lp then
-        if player.Character then
-            task.spawn(function()
-                task.wait(0.5)
-                if getgenv().Config.Enabled then
-                    updateHitboxes()
-                end
-            end)
-        end
-        player.CharacterAdded:Connect(function()
+    if player.Character then
+        task.spawn(function()
             task.wait(0.5)
             if getgenv().Config.Enabled then
                 updateHitboxes()
             end
         end)
     end
+    player.CharacterAdded:Connect(function()
+        task.wait(0.5)
+        if getgenv().Config.Enabled then
+            updateHitboxes()
+        end
+    end)
 end
 
 -- Heartbeat for auto update
