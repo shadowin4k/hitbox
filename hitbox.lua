@@ -95,11 +95,13 @@ local function updateHitboxes()
     local validPartsSet = {}
 
     for _, player in pairs(Players:GetPlayers()) do
-        if player.Character and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
-            local parts = getAllValidParts(player.Character)
-            for _, part in pairs(parts) do
-                applyAdornmentToPart(part)
-                validPartsSet[part] = true
+        if player ~= lp then -- optional: skip local player
+            if player.Character and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
+                local parts = getAllValidParts(player.Character)
+                for _, part in pairs(parts) do
+                    applyAdornmentToPart(part)
+                    validPartsSet[part] = true
+                end
             end
         end
     end
@@ -125,6 +127,15 @@ for _, player in pairs(Players:GetPlayers()) do
     setupCharacterListener(player)
 end
 Players.PlayerAdded:Connect(setupCharacterListener)
+
+Players.PlayerRemoving:Connect(function(player)
+    if player.Character then
+        local parts = getAllValidParts(player.Character)
+        for _, part in pairs(parts) do
+            clearAdornment(part)
+        end
+    end
+end)
 
 RunService.Heartbeat:Connect(function(dt)
     if getgenv().Config.Enabled and getgenv().Config.AutoRefresh then
