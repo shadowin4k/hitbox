@@ -64,6 +64,10 @@ local function isPlayerRelevant(player)
     local part = char:FindFirstChild(getgenv().Config.Hitpart)
     if not part then return false end
 
+    -- Always relevant regardless of distance or visibility
+    return true
+end
+
     -- Check distance from local player HumanoidRootPart
     local hrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
     if not hrp then return false end
