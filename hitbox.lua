@@ -1,6 +1,6 @@
 -- Load Kavo UI
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua"))()
-local Window = Library.CreateLib("Da Hood Universal Hitbox UI", "DarkTheme")
+local Window = Library.CreateLib("Universal Hitbox UI", "DarkTheme")
 local Tab = Window:NewTab("Hitbox")
 local Section = Tab:NewSection("Hitbox Controls")
 
@@ -8,126 +8,144 @@ local Section = Tab:NewSection("Hitbox Controls")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-
 local lp = Players.LocalPlayer
+local camera = workspace.CurrentCamera
 
--- Config
+-- Configuration
 getgenv().Config = {
-    Size = 10,
+    Size = 5,
     InnerColor = Color3.fromRGB(170, 0, 255),
+    Hitpart = "Head",
     Enabled = false,
-    AutoRefresh = true,
+    MaxDistance = 100 -- Max distance to apply hitboxes
 }
 
 local adornments = {}
-local updateInterval = 1
-local accumulatedTime = 0
 
--- Clear adornment from a player's HumanoidRootPart
-local function clearAdornment(player)
-    if adornments[player] then
-        adornments[player]:Destroy()
-        adornments[player] = nil
+local function clearAdornment(part)
+    if part and adornments[part] then
+        adornments[part]:Destroy()
+        adornments[part] = nil
     end
 end
 
--- Apply or update adornment on HumanoidRootPart
-local function applyAdornmentToPlayer(player)
-    local character = player.Character
-    if not character then return end
+local function applyAdornmentToPart(part)
+    if not part then return end
 
-    local rootPart = character:FindFirstChild("HumanoidRootPart")
-    if not rootPart then return end
+    local adorn = adornments[part]
 
-    local config = getgenv().Config
-
-    if adornments[player] then
-        local adorn = adornments[player]
-        local newSize = Vector3.new(config.Size, config.Size, config.Size)
-        if adorn.Size ~= newSize then
-            adorn.Size = newSize
+    if adorn then
+        -- Update size and color if needed
+        if adorn.Size.X ~= getgenv().Config.Size then
+            adorn.Size = Vector3.new(getgenv().Config.Size, getgenv().Config.Size, getgenv().Config.Size)
         end
-        if adorn.Color3 ~= config.InnerColor then
-            adorn.Color3 = config.InnerColor
+        if adorn.Color3 ~= getgenv().Config.InnerColor then
+            adorn.Color3 = getgenv().Config.InnerColor
         end
         return
     end
 
-    local adorn = Instance.new("BoxHandleAdornment")
+    adorn = Instance.new("BoxHandleAdornment")
     adorn.Name = "HitboxAdornment"
-    adorn.Adornee = rootPart
-    adorn.Size = Vector3.new(config.Size, config.Size, config.Size)
-    adorn.Color3 = config.InnerColor
+    adorn.Adornee = part
+    adorn.Size = Vector3.new(getgenv().Config.Size, getgenv().Config.Size, getgenv().Config.Size)
+    adorn.Color3 = getgenv().Config.InnerColor
     adorn.Transparency = 0.5
     adorn.AlwaysOnTop = true
     adorn.ZIndex = 5
-    adorn.Parent = workspace
+    adorn.Parent = part
 
-    adornments[player] = adorn
+    adornments[part] = adorn
 end
 
--- Clear all adornments
+local function isPlayerRelevant(player)
+    local char = player.Character
+    if not char then return false end
+    local part = char:FindFirstChild(getgenv().Config.Hitpart)
+    if not part then return false end
+
+    -- Check distance from local player HumanoidRootPart
+    local hrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return false end
+    local distance = (part.Position - hrp.Position).Magnitude
+    if distance > getgenv().Config.MaxDistance then
+        return false
+    end
+
+    -- Check if part is on screen
+    local _, onScreen = camera:WorldToViewportPoint(part.Position)
+    if not onScreen then
+        return false
+    end
+
+    return true
+end
+
+local function applyHitboxToCharacter(char)
+    local part = char:FindFirstChild(getgenv().Config.Hitpart)
+    if part then
+        applyAdornmentToPart(part)
+    end
+end
+
 local function clearAllAdornments()
-    for player in pairs(adornments) do
-        clearAdornment(player)
+    for part, _ in pairs(adornments) do
+        clearAdornment(part)
     end
     adornments = {}
 end
 
--- Update hitboxes for all players
 local function updateHitboxes()
-    if not getgenv().Config.Enabled then
-        clearAllAdornments()
-        return
-    end
-
-    local validPlayers = {}
-
-    for _, player in pairs(Players:GetPlayers()) do
-        if player.Character and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
-            applyAdornmentToPlayer(player)
-            validPlayers[player] = true
-        end
-    end
-
-    -- Remove adornments for players no longer valid
-    for player in pairs(adornments) do
-        if not validPlayers[player] then
-            clearAdornment(player)
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= lp and player.Character then
+            if isPlayerRelevant(player) then
+                applyHitboxToCharacter(player.Character)
+            else
+                local part = player.Character:FindFirstChild(getgenv().Config.Hitpart)
+                if part then
+                    clearAdornment(part)
+                end
+            end
         end
     end
 end
 
--- Setup listener for when player character respawns
-local function setupCharacterListener(player)
-    player.CharacterAdded:Connect(function()
-        task.wait(1)
-        if getgenv().Config.Enabled then
-            updateHitboxes()
-        end
-    end)
+-- Player and character setup
+local function onCharacterAdded(char)
+    task.wait(0.5)
+    if getgenv().Config.Enabled then
+        applyHitboxToCharacter(char)
+    end
 end
 
--- Setup listeners for all players now and future
-for _, player in pairs(Players:GetPlayers()) do
-    setupCharacterListener(player)
+local function onPlayerAdded(player)
+    if player == lp then return end
+    player.CharacterAdded:Connect(onCharacterAdded)
+    if player.Character then
+        onCharacterAdded(player.Character)
+    end
 end
-Players.PlayerAdded:Connect(setupCharacterListener)
 
--- Heartbeat update loop throttled
+for _, p in ipairs(Players:GetPlayers()) do
+    onPlayerAdded(p)
+end
+Players.PlayerAdded:Connect(onPlayerAdded)
+
+-- Throttled update (every 0.5 seconds)
+local updateInterval = 0.5
+local accumulatedTime = 0
 RunService.Heartbeat:Connect(function(dt)
-    if getgenv().Config.Enabled and getgenv().Config.AutoRefresh then
-        accumulatedTime = accumulatedTime + dt
-        if accumulatedTime >= updateInterval then
-            accumulatedTime = 0
-            updateHitboxes()
-        end
-    end
+    if not getgenv().Config.Enabled then return end
+    accumulatedTime = accumulatedTime + dt
+    if accumulatedTime < updateInterval then return end
+    accumulatedTime = 0
+
+    updateHitboxes()
 end)
 
--- Toggle hitboxes with H key
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
+-- Toggle hitboxes with [H]
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
     if input.KeyCode == Enum.KeyCode.H then
         getgenv().Config.Enabled = not getgenv().Config.Enabled
         if getgenv().Config.Enabled then
@@ -140,7 +158,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
--- UI Controls
+-- UI
 Section:NewLabel("Toggle Hitbox: [H]")
 
 Section:NewSlider("Hitbox Size", "Adjust hitbox size", 50, 1, function(v)
@@ -157,21 +175,22 @@ Section:NewColorPicker("Hitbox Color", "Set the hitbox color", getgenv().Config.
     end
 end)
 
+Section:NewDropdown("Hitpart", "Choose body part", {"Head", "Torso", "HumanoidRootPart", "UpperTorso", "LowerTorso"}, function(v)
+    getgenv().Config.Hitpart = v
+    if getgenv().Config.Enabled then
+        updateHitboxes()
+    end
+end)
+
 Section:NewButton("Apply Manually", "Force apply hitboxes", function()
     updateHitboxes()
 end)
 
 Section:NewToggle("Auto Refresh", "Keep hitboxes updated", function(state)
-    getgenv().Config.AutoRefresh = state
+    getgenv().Config.Enabled = state
     if state then
-        getgenv().Config.Enabled = true
         updateHitboxes()
     else
         clearAllAdornments()
     end
 end)
-
--- Start enabled & auto refresh on
-getgenv().Config.Enabled = true
-getgenv().Config.AutoRefresh = true
-updateHitboxes()
