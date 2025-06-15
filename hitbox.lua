@@ -1,22 +1,23 @@
 -- Load Kavo UI
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua"))()
-local Window = Library.CreateLib("Da Hood Hitbox UI", "DarkTheme")
+local Window = Library.CreateLib("Da Hood Universal Hitbox UI", "DarkTheme")
 local Tab = Window:NewTab("Hitbox")
 local Section = Tab:NewSection("Hitbox Controls")
 
+-- Services
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 local lp = Players.LocalPlayer
 
+-- Config
 getgenv().Config = {
     Size = 10,
     InnerColor = Color3.fromRGB(170, 0, 255),
-    Hitpart = "LowerTorso", -- default hit part
     Enabled = false,
-    MaxDistance = math.huge, -- remove distance limit to cover all players
-    AutoRefresh = true
+    MaxDistance = math.huge,
+    AutoRefresh = true,
 }
 
 local adornments = {}
@@ -66,31 +67,23 @@ local function clearAllAdornments()
     adornments = {}
 end
 
-local function getValidBodyPart(character, hitPartName)
-    if not character then return nil end
+-- Recursively collect all BaseParts inside character to cover all hitbox parts
+local function getAllValidParts(character)
+    local parts = {}
+    if not character then return parts end
 
-    -- Try to get requested hitpart
-    local part = character:FindFirstChild(hitPartName)
-    if part then return part end
-
-    -- If requested part missing, try common torso parts for R15 or R6
-    local possibleParts = {"LowerTorso", "UpperTorso", "Torso", "HumanoidRootPart", "Head"}
-    for _, pName in ipairs(possibleParts) do
-        part = character:FindFirstChild(pName)
-        if part then
-            return part
+    local function findParts(obj)
+        for _, child in pairs(obj:GetChildren()) do
+            if child:IsA("BasePart") then
+                table.insert(parts, child)
+            elseif child:IsA("Model") or child:IsA("Folder") then
+                findParts(child)
+            end
         end
     end
 
-    return nil
-end
-
-local function applyHitboxToPlayer(player)
-    if not player.Character then return end
-    local part = getValidBodyPart(player.Character, getgenv().Config.Hitpart)
-    if part then
-        applyAdornmentToPart(part)
-    end
+    findParts(character)
+    return parts
 end
 
 local function updateHitboxes()
@@ -99,54 +92,40 @@ local function updateHitboxes()
         return
     end
 
-    for _, player in pairs(Players:GetPlayers()) do
-        applyHitboxToPlayer(player)
-    end
+    local validPartsSet = {}
 
-    -- Clean up adornments for parts no longer valid
-    local validParts = {}
     for _, player in pairs(Players:GetPlayers()) do
-        if player.Character then
-            local part = getValidBodyPart(player.Character, getgenv().Config.Hitpart)
-            if part then
-                validParts[part] = true
+        if player.Character and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
+            local parts = getAllValidParts(player.Character)
+            for _, part in pairs(parts) do
+                applyAdornmentToPart(part)
+                validPartsSet[part] = true
             end
         end
     end
 
+    -- Remove adornments no longer valid
     for part in pairs(adornments) do
-        if not validParts[part] then
+        if not validPartsSet[part] then
             clearAdornment(part)
         end
     end
 end
 
--- Helper to wait for character and hitpart before applying adornment
 local function setupCharacterListener(player)
     player.CharacterAdded:Connect(function(character)
-        -- Wait for the character's required body part to load
-        local hitPartName = getgenv().Config.Hitpart
-        local bodyPart = character:WaitForChild(hitPartName, 5) -- wait max 5 sec
-        if not bodyPart then
-            -- fallback if not found
-            bodyPart = getValidBodyPart(character, hitPartName)
-        end
-        if bodyPart and getgenv().Config.Enabled then
-            applyAdornmentToPart(bodyPart)
+        task.wait(1) -- Wait for character to load parts
+        if getgenv().Config.Enabled then
+            updateHitboxes()
         end
     end)
 end
 
--- Setup for all players
 for _, player in pairs(Players:GetPlayers()) do
     setupCharacterListener(player)
 end
+Players.PlayerAdded:Connect(setupCharacterListener)
 
-Players.PlayerAdded:Connect(function(player)
-    setupCharacterListener(player)
-end)
-
--- Update every interval if auto refresh enabled
 RunService.Heartbeat:Connect(function(dt)
     if getgenv().Config.Enabled and getgenv().Config.AutoRefresh then
         accumulatedTime = accumulatedTime + dt
@@ -157,7 +136,6 @@ RunService.Heartbeat:Connect(function(dt)
     end
 end)
 
--- Toggle hitboxes with H key
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if input.KeyCode == Enum.KeyCode.H then
@@ -189,13 +167,6 @@ Section:NewColorPicker("Hitbox Color", "Set the hitbox color", getgenv().Config.
     end
 end)
 
-Section:NewDropdown("Hitpart", "Choose body part", {"Head", "Torso", "HumanoidRootPart", "UpperTorso", "LowerTorso"}, function(v)
-    getgenv().Config.Hitpart = v
-    if getgenv().Config.Enabled then
-        updateHitboxes()
-    end
-end)
-
 Section:NewButton("Apply Manually", "Force apply hitboxes", function()
     updateHitboxes()
 end)
@@ -210,7 +181,7 @@ Section:NewToggle("Auto Refresh", "Keep hitboxes updated", function(state)
     end
 end)
 
--- Start enabled and auto refresh on load
+-- Start enabled by default with auto refresh on
 getgenv().Config.Enabled = true
 getgenv().Config.AutoRefresh = true
 updateHitboxes()
