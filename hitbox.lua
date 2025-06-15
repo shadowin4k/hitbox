@@ -15,41 +15,29 @@ getgenv().Config = {
     Size = 5,
     InnerColor = Color3.fromRGB(170, 0, 255),
     Hitpart = "Head",
-    Enabled = false,
-    UpdateInterval = 0.1 -- seconds between hitbox updates (10 times per second)
+    Enabled = false
 }
 
 local adornments = {}
-local lastUpdate = 0
 
--- Clears hitbox and resets part
-local function clearHitboxOnPart(part)
-    if not part then return end
-    if adornments[part] then
+-- Clears adornment on a part
+local function clearAdornment(part)
+    if part and adornments[part] then
         adornments[part]:Destroy()
         adornments[part] = nil
     end
-    -- Reset part size and properties only if needed (to prevent visual glitches)
-    if part.Size ~= Vector3.new(2,1,1) then
-        part.Size = Vector3.new(2, 1, 1)
-    end
-    part.CanCollide = true
-    part.Massless = false
 end
 
--- Applies hitbox to part with preserved CFrame
-local function applyHitboxToPart(part)
+-- Applies visual hitbox (adornment) to a part WITHOUT changing physical properties
+local function applyAdornmentToPart(part)
     if not part then return end
 
-    -- Avoid resetting every frame: check if adornment exists and size matches
     local adorn = adornments[part]
+
     if adorn then
-        -- Update color and size only if changed
+        -- Update size and color if needed
         if adorn.Size.X ~= getgenv().Config.Size then
-            local oldCF = part.CFrame
-            part.Size = Vector3.new(getgenv().Config.Size, getgenv().Config.Size, getgenv().Config.Size)
-            part.CFrame = oldCF
-            adorn.Size = part.Size
+            adorn.Size = Vector3.new(getgenv().Config.Size, getgenv().Config.Size, getgenv().Config.Size)
         end
         if adorn.Color3 ~= getgenv().Config.InnerColor then
             adorn.Color3 = getgenv().Config.InnerColor
@@ -57,19 +45,11 @@ local function applyHitboxToPart(part)
         return
     end
 
-    -- Create new adornment
-    clearHitboxOnPart(part)
-
-    local oldCF = part.CFrame
-    part.Size = Vector3.new(getgenv().Config.Size, getgenv().Config.Size, getgenv().Config.Size)
-    part.CFrame = oldCF
-    part.CanCollide = false
-    part.Massless = true
-
+    -- Create adornment
     adorn = Instance.new("BoxHandleAdornment")
     adorn.Name = "HitboxAdornment"
     adorn.Adornee = part
-    adorn.Size = part.Size
+    adorn.Size = Vector3.new(getgenv().Config.Size, getgenv().Config.Size, getgenv().Config.Size)
     adorn.Color3 = getgenv().Config.InnerColor
     adorn.Transparency = 0.5
     adorn.AlwaysOnTop = true
@@ -79,23 +59,23 @@ local function applyHitboxToPart(part)
     adornments[part] = adorn
 end
 
--- Applies hitbox to a character
+-- Apply adornment to character's hitpart
 local function applyHitboxToCharacter(char)
     local part = char:FindFirstChild(getgenv().Config.Hitpart)
     if part then
-        applyHitboxToPart(part)
+        applyAdornmentToPart(part)
     end
 end
 
--- Clears all hitboxes
-local function clearHitboxes()
+-- Clear all adornments
+local function clearAllAdornments()
     for part, _ in pairs(adornments) do
-        clearHitboxOnPart(part)
+        clearAdornment(part)
     end
     adornments = {}
 end
 
--- Applies to all players
+-- Apply hitboxes to all players except local player
 local function applyHitboxes()
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= lp and player.Character then
@@ -106,11 +86,10 @@ end
 
 -- Character and player listeners
 local function onCharacterAdded(char)
-    task.delay(0.5, function()
-        if getgenv().Config.Enabled then
-            applyHitboxToCharacter(char)
-        end
-    end)
+    task.wait(0.5)
+    if getgenv().Config.Enabled then
+        applyHitboxToCharacter(char)
+    end
 end
 
 local function onPlayerAdded(player)
@@ -127,18 +106,20 @@ for _, p in ipairs(Players:GetPlayers()) do
 end
 Players.PlayerAdded:Connect(onPlayerAdded)
 
--- Update hitboxes at throttled interval instead of every frame
+-- Update adornments occasionally, not every frame, to avoid overhead
+local updateInterval = 0.3
+local accumulatedTime = 0
 RunService.Heartbeat:Connect(function(dt)
     if not getgenv().Config.Enabled then return end
-    lastUpdate = lastUpdate + dt
-    if lastUpdate < getgenv().Config.UpdateInterval then return end
-    lastUpdate = 0
+    accumulatedTime = accumulatedTime + dt
+    if accumulatedTime < updateInterval then return end
+    accumulatedTime = 0
 
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= lp and player.Character then
             local part = player.Character:FindFirstChild(getgenv().Config.Hitpart)
             if part then
-                applyHitboxToPart(part)
+                applyAdornmentToPart(part)
             end
         end
     end
@@ -153,7 +134,7 @@ UserInputService.InputBegan:Connect(function(input, gp)
             applyHitboxes()
             print("[Hitbox] Enabled")
         else
-            clearHitboxes()
+            clearAllAdornments()
             print("[Hitbox] Disabled")
         end
     end
@@ -192,6 +173,6 @@ Section:NewToggle("Auto Refresh", "Keep hitboxes updated", function(state)
     if state then
         applyHitboxes()
     else
-        clearHitboxes()
+        clearAllAdornments()
     end
 end)
