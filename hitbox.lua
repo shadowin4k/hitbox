@@ -13,7 +13,7 @@ local lp = Players.LocalPlayer
 
 -- Config
 getgenv().Config = {
-    Size = 5,
+    Size = 20, -- Increased size for visibility
     InnerColor = Color3.fromRGB(170, 0, 255),
     Hitpart = "Head",
     Enabled = false,
@@ -28,6 +28,7 @@ local function clearAdornment(part)
     if part and adornments[part] then
         adornments[part]:Destroy()
         adornments[part] = nil
+        print("[Hitbox] Cleared adornment for", part:GetFullName())
     end
 end
 
@@ -55,9 +56,10 @@ local function applyAdornmentToPart(part)
     adorn.Transparency = 0.5
     adorn.AlwaysOnTop = true
     adorn.ZIndex = 5
-    adorn.Parent = workspace
+    adorn.Parent = part  -- Parent directly to the part!
 
     adornments[part] = adorn
+    print("[Hitbox] Applied adornment to", part:GetFullName())
 end
 
 local function clearAllAdornments()
