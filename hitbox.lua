@@ -11,16 +11,18 @@ local UserInputService = game:GetService("UserInputService")
 local lp = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
--- Configuration (modifiable via UI)
+-- Configuration
 getgenv().Config = {
     Size = 5,
     InnerColor = Color3.fromRGB(170, 0, 255),
     Hitpart = "Head",
     Enabled = false,
-    MaxDistance = 100 -- Only players closer than this get hitboxes
+    MaxDistance = 100
 }
 
 local adornments = {}
+local updateInterval = 1 -- update every 1 second to reduce lag
+local accumulatedTime = 0
 
 local function clearAdornment(part)
     if part and adornments[part] then
@@ -32,10 +34,9 @@ end
 local function applyAdornmentToPart(part)
     if not part then return end
 
-    local adorn = adornments[part]
-
-    if adorn then
-        -- Update size and color only if changed
+    if adornments[part] then
+        -- update size and color if changed
+        local adorn = adornments[part]
         local newSize = Vector3.new(getgenv().Config.Size, getgenv().Config.Size, getgenv().Config.Size)
         if adorn.Size ~= newSize then
             adorn.Size = newSize
@@ -46,8 +47,7 @@ local function applyAdornmentToPart(part)
         return
     end
 
-    -- Create new adornment if none exists
-    adorn = Instance.new("BoxHandleAdornment")
+    local adorn = Instance.new("BoxHandleAdornment")
     adorn.Name = "HitboxAdornment"
     adorn.Adornee = part
     adorn.Size = Vector3.new(getgenv().Config.Size, getgenv().Config.Size, getgenv().Config.Size)
@@ -55,7 +55,7 @@ local function applyAdornmentToPart(part)
     adorn.Transparency = 0.5
     adorn.AlwaysOnTop = true
     adorn.ZIndex = 5
-    adorn.Parent = part
+    adorn.Parent = workspace -- Parenting to workspace is less laggy than part sometimes
 
     adornments[part] = adorn
 end
@@ -74,12 +74,7 @@ local function isPlayerRelevant(player)
         return false
     end
 
-    local _, onScreen = camera:WorldToViewportPoint(part.Position)
-    if not onScreen then
-        return false
-    end
-
-    return true
+    return true -- Removed the onScreen check for reliability
 end
 
 local function applyHitboxToCharacter(char)
@@ -97,24 +92,45 @@ local function clearAllAdornments()
 end
 
 local function updateHitboxes()
-    for _, player in ipairs(Players:GetPlayers()) do
+    if not getgenv().Config.Enabled then
+        clearAllAdornments()
+        return
+    end
+
+    local players = Players:GetPlayers()
+    local hrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local activeParts = {}
+
+    for _, player in ipairs(players) do
         if player ~= lp and player.Character then
-            if isPlayerRelevant(player) then
-                applyHitboxToCharacter(player.Character)
-            else
-                local part = player.Character:FindFirstChild(getgenv().Config.Hitpart)
-                if part then
+            local part = player.Character:FindFirstChild(getgenv().Config.Hitpart)
+            if part then
+                local dist = (part.Position - hrp.Position).Magnitude
+                if dist <= getgenv().Config.MaxDistance then
+                    applyAdornmentToPart(part)
+                    activeParts[part] = true
+                else
                     clearAdornment(part)
                 end
             end
         end
     end
+
+    -- Clear adornments for parts no longer valid
+    for part, adorn in pairs(adornments) do
+        if not activeParts[part] then
+            clearAdornment(part)
+        end
+    end
 end
 
+-- Player/Character connections
 local function onCharacterAdded(char)
     task.wait(0.5)
     if getgenv().Config.Enabled then
-        applyHitboxToCharacter(char)
+        updateHitboxes()
     end
 end
 
@@ -131,17 +147,17 @@ for _, p in ipairs(Players:GetPlayers()) do
 end
 Players.PlayerAdded:Connect(onPlayerAdded)
 
-local updateInterval = 0.5
-local accumulatedTime = 0
+-- Heartbeat update (throttled)
 RunService.Heartbeat:Connect(function(dt)
     if not getgenv().Config.Enabled then return end
     accumulatedTime = accumulatedTime + dt
-    if accumulatedTime < updateInterval then return end
-    accumulatedTime = 0
-
-    updateHitboxes()
+    if accumulatedTime >= updateInterval then
+        accumulatedTime = 0
+        updateHitboxes()
+    end
 end)
 
+-- Toggle hitboxes with [H]
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if input.KeyCode == Enum.KeyCode.H then
