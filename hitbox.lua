@@ -5,10 +5,13 @@ local Window = Library.CreateLib("Universal Hitbox UI", "DarkTheme")
 local Tab = Window:NewTab("Hitbox")
 local Section = Tab:NewSection("Hitbox Controls")
 
-local uis = game:GetService("UserInputService")
+-- Services
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local uis = game:GetService("UserInputService")
 local lp = Players.LocalPlayer
 
+-- Configuration
 getgenv().Config = {
     Size = 5,
     InnerColor = Color3.fromRGB(170, 0, 255),
@@ -16,23 +19,52 @@ getgenv().Config = {
     Enabled = false
 }
 
--- Keep track of adornments to remove later
 local adornments = {}
 
--- Clear hitbox on a specific character's part
+-- Clear hitbox
 local function clearHitboxOnPart(part)
-    if not part then return end
-    local adorn = part:FindFirstChild("HitboxAdornment")
-    if adorn then
-        adorn:Destroy()
+    if part then
+        local adorn = part:FindFirstChild("HitboxAdornment")
+        if adorn then
+            adorn:Destroy()
+        end
+        part.CanCollide = true
+        part.Massless = false
+        part.Size = Vector3.new(2, 1, 1)
     end
-    -- Reset part properties
-    part.Size = Vector3.new(2, 1, 1)
-    part.CanCollide = true
-    part.Massless = false
 end
 
--- Clear all hitboxes on all players (except local)
+-- Apply hitbox using CFrame preserving
+local function applyHitboxToPart(part)
+    if not part then return end
+    clearHitboxOnPart(part)
+
+    local oldCFrame = part.CFrame
+    part.Size = Vector3.new(getgenv().Config.Size, getgenv().Config.Size, getgenv().Config.Size)
+    part.CFrame = oldCFrame
+    part.CanCollide = false
+    part.Massless = true
+
+    local adorn = Instance.new("BoxHandleAdornment")
+    adorn.Name = "HitboxAdornment"
+    adorn.Adornee = part
+    adorn.Size = part.Size
+    adorn.Color3 = getgenv().Config.InnerColor
+    adorn.Transparency = 0.5
+    adorn.AlwaysOnTop = true
+    adorn.ZIndex = 5
+    adorn.Parent = part
+    adornments[part] = adorn
+end
+
+-- Apply to a character
+local function applyHitboxToCharacter(char)
+    local part = char:FindFirstChild(getgenv().Config.Hitpart)
+    if not part then return end
+    applyHitboxToPart(part)
+end
+
+-- Clear all hitboxes
 local function clearHitboxes()
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= lp and player.Character then
@@ -40,42 +72,9 @@ local function clearHitboxes()
             clearHitboxOnPart(part)
         end
     end
-    adornments = {}
 end
 
--- Apply hitbox adornment to one character
-local function applyHitboxToCharacter(char)
-    local part = char:FindFirstChild(getgenv().Config.Hitpart)
-    if not part then
-        -- Wait for part to load if not present yet (helps on respawn)
-        part = char:WaitForChild(getgenv().Config.Hitpart, 5)
-        if not part then return end
-    end
-
-    -- Clear previous adornment
-    clearHitboxOnPart(part)
-
-    -- Create adornment
-    local adorn = Instance.new("BoxHandleAdornment")
-    adorn.Name = "HitboxAdornment"
-    adorn.Adornee = part
-    adorn.Size = Vector3.new(getgenv().Config.Size, getgenv().Config.Size, getgenv().Config.Size)
-    adorn.Color3 = getgenv().Config.InnerColor
-    adorn.Transparency = 0.5
-    adorn.ZIndex = 5
-    adorn.AlwaysOnTop = true
-    adorn.Parent = part
-
-    -- Modify part size and properties
-    part.Size = adorn.Size
-    part.CanCollide = false
-    part.Massless = true
-
-    -- Store adornment so we can remove later
-    adornments[part] = adorn
-end
-
--- Apply hitboxes to all players
+-- Apply to all players
 local function applyHitboxes()
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= lp and player.Character then
@@ -84,24 +83,44 @@ local function applyHitboxes()
     end
 end
 
--- Connect CharacterAdded event to reapply hitbox when players respawn
-local function setupCharacterListener(player)
-    player.CharacterAdded:Connect(function(char)
-        -- Small delay to let character load parts
-        task.wait(0.5)
-        if getgenv().Config.Enabled then
-            applyHitboxToCharacter(char)
+-- Handle new player
+local function onCharacterAdded(char)
+    task.wait(1)
+    if getgenv().Config.Enabled then
+        applyHitboxToCharacter(char)
+    end
+end
+
+local function onPlayerAdded(player)
+    player.CharacterAdded:Connect(onCharacterAdded)
+end
+
+-- Setup existing and future players
+for _, p in pairs(Players:GetPlayers()) do
+    if p ~= lp then
+        if p.Character then onCharacterAdded(p.Character) end
+        onPlayerAdded(p)
+    end
+end
+Players.PlayerAdded:Connect(onPlayerAdded)
+
+-- Auto refresh (live updates)
+RunService.RenderStepped:Connect(function()
+    if getgenv().Config.Enabled then
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= lp and player.Character then
+                local part = player.Character:FindFirstChild(getgenv().Config.Hitpart)
+                if part and (not adornments[part] or part.Size.X ~= getgenv().Config.Size) then
+                    applyHitboxToPart(part)
+                elseif adornments[part] then
+                    adornments[part].Color3 = getgenv().Config.InnerColor
+                end
+            end
         end
-    end)
-end
+    end
+end)
 
--- Setup listeners for all players, including future joins
-for _, player in ipairs(Players:GetPlayers()) do
-    setupCharacterListener(player)
-end
-Players.PlayerAdded:Connect(setupCharacterListener)
-
--- Toggle hitbox on/off with H key
+-- Key toggle
 uis.InputBegan:Connect(function(input, gp)
     if not gp and input.KeyCode == Enum.KeyCode.H then
         getgenv().Config.Enabled = not getgenv().Config.Enabled
@@ -115,38 +134,33 @@ uis.InputBegan:Connect(function(input, gp)
     end
 end)
 
--- Auto refresh loop (backup to keep hitboxes fresh)
-task.spawn(function()
-    while true do
-        if getgenv().Config.Enabled then
-            applyHitboxes()
-        end
-        task.wait(1.5)
-    end
-end)
-
--- UI
+-- UI Controls
 Section:NewLabel("Toggle Hitbox: [H]")
 
 Section:NewSlider("Hitbox Size", "Adjust hitbox size", 50, 1, function(v)
     getgenv().Config.Size = v
-    if getgenv().Config.Enabled then applyHitboxes() end
 end)
 
 Section:NewColorPicker("Hitbox Color", "Set the hitbox color", getgenv().Config.InnerColor, function(c)
     getgenv().Config.InnerColor = c
-    if getgenv().Config.Enabled then applyHitboxes() end
 end)
 
 Section:NewDropdown("Hitpart", "Choose body part", {"Head", "Torso", "HumanoidRootPart", "UpperTorso", "LowerTorso"}, function(v)
     getgenv().Config.Hitpart = v
-    if getgenv().Config.Enabled then applyHitboxes() end
+    if getgenv().Config.Enabled then
+        applyHitboxes()
+    end
 end)
 
-Section:NewButton("Apply Manually", "Apply hitboxes right now", function()
+Section:NewButton("Apply Manually", "Force apply hitboxes", function()
     applyHitboxes()
 end)
 
 Section:NewToggle("Auto Refresh", "Keep hitboxes updated", function(state)
     getgenv().Config.Enabled = state
+    if not state then
+        clearHitboxes()
+    else
+        applyHitboxes()
+    end
 end)
