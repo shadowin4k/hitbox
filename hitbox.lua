@@ -11,13 +11,13 @@ local UserInputService = game:GetService("UserInputService")
 local lp = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
--- Configuration
+-- Configuration (modifiable via UI)
 getgenv().Config = {
     Size = 5,
     InnerColor = Color3.fromRGB(170, 0, 255),
     Hitpart = "Head",
     Enabled = false,
-    MaxDistance = 100 -- Max distance to apply hitboxes
+    MaxDistance = 100 -- Only players closer than this get hitboxes
 }
 
 local adornments = {}
@@ -35,9 +35,10 @@ local function applyAdornmentToPart(part)
     local adorn = adornments[part]
 
     if adorn then
-        -- Update size and color if needed
-        if adorn.Size.X ~= getgenv().Config.Size then
-            adorn.Size = Vector3.new(getgenv().Config.Size, getgenv().Config.Size, getgenv().Config.Size)
+        -- Update size and color only if changed
+        local newSize = Vector3.new(getgenv().Config.Size, getgenv().Config.Size, getgenv().Config.Size)
+        if adorn.Size ~= newSize then
+            adorn.Size = newSize
         end
         if adorn.Color3 ~= getgenv().Config.InnerColor then
             adorn.Color3 = getgenv().Config.InnerColor
@@ -45,6 +46,7 @@ local function applyAdornmentToPart(part)
         return
     end
 
+    -- Create new adornment if none exists
     adorn = Instance.new("BoxHandleAdornment")
     adorn.Name = "HitboxAdornment"
     adorn.Adornee = part
@@ -64,15 +66,14 @@ local function isPlayerRelevant(player)
     local part = char:FindFirstChild(getgenv().Config.Hitpart)
     if not part then return false end
 
-    -- Check distance from local player HumanoidRootPart
     local hrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
     if not hrp then return false end
+
     local distance = (part.Position - hrp.Position).Magnitude
     if distance > getgenv().Config.MaxDistance then
         return false
     end
 
-    -- Check if part is on screen
     local _, onScreen = camera:WorldToViewportPoint(part.Position)
     if not onScreen then
         return false
@@ -110,7 +111,6 @@ local function updateHitboxes()
     end
 end
 
--- Player and character setup
 local function onCharacterAdded(char)
     task.wait(0.5)
     if getgenv().Config.Enabled then
@@ -131,7 +131,6 @@ for _, p in ipairs(Players:GetPlayers()) do
 end
 Players.PlayerAdded:Connect(onPlayerAdded)
 
--- Throttled update (every 0.5 seconds)
 local updateInterval = 0.5
 local accumulatedTime = 0
 RunService.Heartbeat:Connect(function(dt)
@@ -143,9 +142,8 @@ RunService.Heartbeat:Connect(function(dt)
     updateHitboxes()
 end)
 
--- Toggle hitboxes with [H]
-UserInputService.InputBegan:Connect(function(input, gp)
-    if gp then return end
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
     if input.KeyCode == Enum.KeyCode.H then
         getgenv().Config.Enabled = not getgenv().Config.Enabled
         if getgenv().Config.Enabled then
@@ -158,7 +156,7 @@ UserInputService.InputBegan:Connect(function(input, gp)
     end
 end)
 
--- UI
+-- UI Controls
 Section:NewLabel("Toggle Hitbox: [H]")
 
 Section:NewSlider("Hitbox Size", "Adjust hitbox size", 50, 1, function(v)
