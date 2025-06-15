@@ -1,6 +1,6 @@
 -- Load Kavo UI
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua"))()
-local Window = Library.CreateLib("Universal Hitbox UI", "DarkTheme")
+local Window = Library.CreateLib("Da Hood Hitbox UI", "DarkTheme")
 local Tab = Window:NewTab("Hitbox")
 local Section = Tab:NewSection("Hitbox Controls")
 
@@ -13,15 +13,15 @@ local lp = Players.LocalPlayer
 
 -- Config
 getgenv().Config = {
-    Size = 5,
+    Size = 10, -- Bigger default for Da Hood
     InnerColor = Color3.fromRGB(170, 0, 255),
-    Hitpart = "Head",
+    Hitpart = "UpperTorso", -- Da Hood uses R15, upper torso is reliable
     Enabled = false,
-    MaxDistance = 100
+    MaxDistance = 150 -- Increase range for Da Hood maps
 }
 
 local adornments = {}
-local updateInterval = 1 -- update every second
+local updateInterval = 1 -- seconds
 local accumulatedTime = 0
 
 local function clearAdornment(part)
@@ -55,7 +55,7 @@ local function applyAdornmentToPart(part)
     adorn.Transparency = 0.5
     adorn.AlwaysOnTop = true
     adorn.ZIndex = 5
-    adorn.Parent = workspace
+    adorn.Parent = workspace -- could also use game.CoreGui or a Folder
 
     adornments[part] = adorn
 end
@@ -74,25 +74,27 @@ local function updateHitboxes()
     end
 
     local config = getgenv().Config
-    local hrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+    local hrp = lp.Character and (lp.Character:FindFirstChild("HumanoidRootPart") or lp.Character:FindFirstChild("Torso") or lp.Character:FindFirstChild("UpperTorso"))
     if not hrp then return end
 
     local activeParts = {}
 
     for _, player in pairs(Players:GetPlayers()) do
-        if player ~= lp and player.Character and player.Character:FindFirstChild(config.Hitpart) then
-            local part = player.Character[config.Hitpart]
-            local dist = (part.Position - hrp.Position).Magnitude
-            if dist <= config.MaxDistance then
-                applyAdornmentToPart(part)
-                activeParts[part] = true
-            else
-                clearAdornment(part)
+        if player ~= lp and player.Character then
+            local part = player.Character:FindFirstChild(config.Hitpart)
+            if part then
+                local dist = (part.Position - hrp.Position).Magnitude
+                if dist <= config.MaxDistance then
+                    applyAdornmentToPart(part)
+                    activeParts[part] = true
+                else
+                    clearAdornment(part)
+                end
             end
         end
     end
 
-    -- Remove adornments from parts no longer in range or valid
+    -- Clear adornments for parts no longer valid
     for part in pairs(adornments) do
         if not activeParts[part] then
             clearAdornment(part)
@@ -103,7 +105,7 @@ end
 -- Handle players joining
 Players.PlayerAdded:Connect(function(player)
     if player == lp then return end
-    player.CharacterAdded:Connect(function(char)
+    player.CharacterAdded:Connect(function()
         task.wait(0.5)
         if getgenv().Config.Enabled then
             updateHitboxes()
@@ -122,7 +124,7 @@ for _, player in pairs(Players:GetPlayers()) do
                 end
             end)
         end
-        player.CharacterAdded:Connect(function(char)
+        player.CharacterAdded:Connect(function()
             task.wait(0.5)
             if getgenv().Config.Enabled then
                 updateHitboxes()
