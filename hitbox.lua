@@ -1,7 +1,6 @@
 -- Load Kavo UI
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua"))()
 local Window = Library.CreateLib("Universal Hitbox UI", "DarkTheme")
-
 local Tab = Window:NewTab("Hitbox")
 local Section = Tab:NewSection("Hitbox Controls")
 
@@ -21,27 +20,27 @@ getgenv().Config = {
 
 local adornments = {}
 
--- Clear hitbox
+-- Clears hitbox and resets part
 local function clearHitboxOnPart(part)
-    if part then
-        local adorn = part:FindFirstChild("HitboxAdornment")
-        if adorn then
-            adorn:Destroy()
-        end
-        part.CanCollide = true
-        part.Massless = false
-        part.Size = Vector3.new(2, 1, 1)
+    if not part then return end
+    if adornments[part] then
+        adornments[part]:Destroy()
+        adornments[part] = nil
     end
+    part.CanCollide = true
+    part.Massless = false
+    part.Size = Vector3.new(2, 1, 1)
 end
 
--- Apply hitbox using CFrame preserving
+-- Applies hitbox to part with preserved CFrame
 local function applyHitboxToPart(part)
     if not part then return end
+
     clearHitboxOnPart(part)
 
-    local oldCFrame = part.CFrame
+    local oldCF = part.CFrame
     part.Size = Vector3.new(getgenv().Config.Size, getgenv().Config.Size, getgenv().Config.Size)
-    part.CFrame = oldCFrame
+    part.CFrame = oldCF
     part.CanCollide = false
     part.Massless = true
 
@@ -54,27 +53,28 @@ local function applyHitboxToPart(part)
     adorn.AlwaysOnTop = true
     adorn.ZIndex = 5
     adorn.Parent = part
+
     adornments[part] = adorn
 end
 
--- Apply to a character
+-- Applies hitbox to a character
 local function applyHitboxToCharacter(char)
     local part = char:FindFirstChild(getgenv().Config.Hitpart)
-    if not part then return end
-    applyHitboxToPart(part)
+    if part then
+        applyHitboxToPart(part)
+    end
 end
 
--- Clear all hitboxes
+-- Clears all hitboxes
 local function clearHitboxes()
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= lp and player.Character then
-            local part = player.Character:FindFirstChild(getgenv().Config.Hitpart)
+    for part, _ in pairs(adornments) do
+        if part then
             clearHitboxOnPart(part)
         end
     end
 end
 
--- Apply to all players
+-- Applies to all players
 local function applyHitboxes()
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= lp and player.Character then
@@ -83,46 +83,51 @@ local function applyHitboxes()
     end
 end
 
--- Handle new player
+-- Character and player listeners
 local function onCharacterAdded(char)
-    task.wait(1)
+    task.wait(0.5)
     if getgenv().Config.Enabled then
         applyHitboxToCharacter(char)
     end
 end
 
 local function onPlayerAdded(player)
+    if player == lp then return end
     player.CharacterAdded:Connect(onCharacterAdded)
+    if player.Character then
+        onCharacterAdded(player.Character)
+    end
 end
 
--- Setup existing and future players
-for _, p in pairs(Players:GetPlayers()) do
-    if p ~= lp then
-        if p.Character then onCharacterAdded(p.Character) end
-        onPlayerAdded(p)
-    end
+-- Setup existing players
+for _, p in ipairs(Players:GetPlayers()) do
+    onPlayerAdded(p)
 end
 Players.PlayerAdded:Connect(onPlayerAdded)
 
--- Auto refresh (live updates)
+-- Live update using RenderStepped
 RunService.RenderStepped:Connect(function()
-    if getgenv().Config.Enabled then
-        for _, player in ipairs(Players:GetPlayers()) do
-            if player ~= lp and player.Character then
-                local part = player.Character:FindFirstChild(getgenv().Config.Hitpart)
-                if part and (not adornments[part] or part.Size.X ~= getgenv().Config.Size) then
+    if not getgenv().Config.Enabled then return end
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= lp and player.Character then
+            local part = player.Character:FindFirstChild(getgenv().Config.Hitpart)
+            if part then
+                local adorn = adornments[part]
+                if not adorn or adorn.Size.X ~= getgenv().Config.Size then
                     applyHitboxToPart(part)
-                elseif adornments[part] then
-                    adornments[part].Color3 = getgenv().Config.InnerColor
+                elseif adorn then
+                    adorn.Color3 = getgenv().Config.InnerColor
                 end
             end
         end
     end
 end)
 
--- Key toggle
+-- Key toggle [H]
 uis.InputBegan:Connect(function(input, gp)
-    if not gp and input.KeyCode == Enum.KeyCode.H then
+    if gp then return end
+    if input.KeyCode == Enum.KeyCode.H then
         getgenv().Config.Enabled = not getgenv().Config.Enabled
         if getgenv().Config.Enabled then
             applyHitboxes()
@@ -134,7 +139,7 @@ uis.InputBegan:Connect(function(input, gp)
     end
 end)
 
--- UI Controls
+-- UI
 Section:NewLabel("Toggle Hitbox: [H]")
 
 Section:NewSlider("Hitbox Size", "Adjust hitbox size", 50, 1, function(v)
@@ -158,9 +163,9 @@ end)
 
 Section:NewToggle("Auto Refresh", "Keep hitboxes updated", function(state)
     getgenv().Config.Enabled = state
-    if not state then
-        clearHitboxes()
-    else
+    if state then
         applyHitboxes()
+    else
+        clearHitboxes()
     end
 end)
