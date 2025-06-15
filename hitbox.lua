@@ -23,36 +23,39 @@ local adornments = {}
 local updateInterval = 1
 local accumulatedTime = 0
 
--- Clear adornment from part
-local function clearAdornment(part)
-    if part and adornments[part] then
-        adornments[part]:Destroy()
-        adornments[part] = nil
+-- Clear adornment from a player's HumanoidRootPart
+local function clearAdornment(player)
+    if adornments[player] then
+        adornments[player]:Destroy()
+        adornments[player] = nil
     end
 end
 
--- Add or update adornment on a part
-local function applyAdornmentToPart(part)
-    if not part or adornments[part] then
-        if adornments[part] then
-            -- Update size and color if changed
-            local adorn = adornments[part]
-            local config = getgenv().Config
-            local newSize = Vector3.new(config.Size, config.Size, config.Size)
-            if adorn.Size ~= newSize then
-                adorn.Size = newSize
-            end
-            if adorn.Color3 ~= config.InnerColor then
-                adorn.Color3 = config.InnerColor
-            end
+-- Apply or update adornment on HumanoidRootPart
+local function applyAdornmentToPlayer(player)
+    local character = player.Character
+    if not character then return end
+
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return end
+
+    local config = getgenv().Config
+
+    if adornments[player] then
+        local adorn = adornments[player]
+        local newSize = Vector3.new(config.Size, config.Size, config.Size)
+        if adorn.Size ~= newSize then
+            adorn.Size = newSize
+        end
+        if adorn.Color3 ~= config.InnerColor then
+            adorn.Color3 = config.InnerColor
         end
         return
     end
 
-    local config = getgenv().Config
     local adorn = Instance.new("BoxHandleAdornment")
     adorn.Name = "HitboxAdornment"
-    adorn.Adornee = part
+    adorn.Adornee = rootPart
     adorn.Size = Vector3.new(config.Size, config.Size, config.Size)
     adorn.Color3 = config.InnerColor
     adorn.Transparency = 0.5
@@ -60,81 +63,58 @@ local function applyAdornmentToPart(part)
     adorn.ZIndex = 5
     adorn.Parent = workspace
 
-    adornments[part] = adorn
+    adornments[player] = adorn
 end
 
--- Remove all adornments
+-- Clear all adornments
 local function clearAllAdornments()
-    for part in pairs(adornments) do
-        clearAdornment(part)
+    for player in pairs(adornments) do
+        clearAdornment(player)
     end
     adornments = {}
 end
 
--- Get all BaseParts inside a character (recursive)
-local function getAllBaseParts(model)
-    local parts = {}
-    if not model then return parts end
-
-    for _, child in pairs(model:GetChildren()) do
-        if child:IsA("BasePart") then
-            table.insert(parts, child)
-        elseif child:IsA("Model") or child:IsA("Folder") then
-            -- Recursive search in sub-models/folders
-            for _, p in pairs(getAllBaseParts(child)) do
-                table.insert(parts, p)
-            end
-        end
-    end
-
-    return parts
-end
-
--- Update all hitboxes for all players
+-- Update hitboxes for all players
 local function updateHitboxes()
     if not getgenv().Config.Enabled then
         clearAllAdornments()
         return
     end
 
-    local validPartsSet = {}
+    local validPlayers = {}
 
     for _, player in pairs(Players:GetPlayers()) do
         if player.Character and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
-            local parts = getAllBaseParts(player.Character)
-            for _, part in pairs(parts) do
-                applyAdornmentToPart(part)
-                validPartsSet[part] = true
-            end
+            applyAdornmentToPlayer(player)
+            validPlayers[player] = true
         end
     end
 
-    -- Remove adornments for parts no longer valid
-    for part in pairs(adornments) do
-        if not validPartsSet[part] then
-            clearAdornment(part)
+    -- Remove adornments for players no longer valid
+    for player in pairs(adornments) do
+        if not validPlayers[player] then
+            clearAdornment(player)
         end
     end
 end
 
--- Listen for new characters spawning
+-- Setup listener for when player character respawns
 local function setupCharacterListener(player)
     player.CharacterAdded:Connect(function()
-        task.wait(1) -- wait for character to load
+        task.wait(1)
         if getgenv().Config.Enabled then
             updateHitboxes()
         end
     end)
 end
 
--- Setup listeners for all current and future players
+-- Setup listeners for all players now and future
 for _, player in pairs(Players:GetPlayers()) do
     setupCharacterListener(player)
 end
-
 Players.PlayerAdded:Connect(setupCharacterListener)
 
--- Heartbeat update loop (throttled)
+-- Heartbeat update loop throttled
 RunService.Heartbeat:Connect(function(dt)
     if getgenv().Config.Enabled and getgenv().Config.AutoRefresh then
         accumulatedTime = accumulatedTime + dt
@@ -191,7 +171,7 @@ Section:NewToggle("Auto Refresh", "Keep hitboxes updated", function(state)
     end
 end)
 
--- Start with hitboxes enabled & auto refresh
+-- Start enabled & auto refresh on
 getgenv().Config.Enabled = true
 getgenv().Config.AutoRefresh = true
 updateHitboxes()
