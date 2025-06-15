@@ -13,10 +13,10 @@ local lp = Players.LocalPlayer
 getgenv().Config = {
     Size = 10,
     InnerColor = Color3.fromRGB(170, 0, 255),
-    Hitpart = "LowerTorso",
+    Hitpart = "LowerTorso", -- default hit part
     Enabled = false,
-    MaxDistance = 150,
-    AutoRefresh = true -- Always auto-refresh by default
+    MaxDistance = math.huge, -- remove distance limit to cover all players
+    AutoRefresh = true
 }
 
 local adornments = {}
@@ -66,8 +66,31 @@ local function clearAllAdornments()
     adornments = {}
 end
 
-local function getCharacterRoot(character)
-    return character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("LowerTorso") or character:FindFirstChild("Torso")
+local function getValidBodyPart(character, hitPartName)
+    if not character then return nil end
+
+    -- Try to get requested hitpart
+    local part = character:FindFirstChild(hitPartName)
+    if part then return part end
+
+    -- If requested part missing, try common torso parts for R15 or R6
+    local possibleParts = {"LowerTorso", "UpperTorso", "Torso", "HumanoidRootPart", "Head"}
+    for _, pName in ipairs(possibleParts) do
+        part = character:FindFirstChild(pName)
+        if part then
+            return part
+        end
+    end
+
+    return nil
+end
+
+local function applyHitboxToPlayer(player)
+    if not player.Character then return end
+    local part = getValidBodyPart(player.Character, getgenv().Config.Hitpart)
+    if part then
+        applyAdornmentToPart(part)
+    end
 end
 
 local function updateHitboxes()
@@ -76,76 +99,61 @@ local function updateHitboxes()
         return
     end
 
-    local config = getgenv().Config
-    local hrp = lp.Character and getCharacterRoot(lp.Character)
-    if not hrp then
-        return
+    for _, player in pairs(Players:GetPlayers()) do
+        applyHitboxToPlayer(player)
     end
 
-    local activeParts = {}
-
+    -- Clean up adornments for parts no longer valid
+    local validParts = {}
     for _, player in pairs(Players:GetPlayers()) do
         if player.Character then
-            local targetPart = player.Character:FindFirstChild(config.Hitpart)
-
-            if not targetPart then
-                targetPart = player.Character:FindFirstChild("LowerTorso") or player.Character:FindFirstChild("UpperTorso") or player.Character:FindFirstChild("HumanoidRootPart")
-            end
-
-            if targetPart then
-                local dist = (targetPart.Position - hrp.Position).Magnitude
-                if dist <= config.MaxDistance then
-                    applyAdornmentToPart(targetPart)
-                    activeParts[targetPart] = true
-                else
-                    clearAdornment(targetPart)
-                end
+            local part = getValidBodyPart(player.Character, getgenv().Config.Hitpart)
+            if part then
+                validParts[part] = true
             end
         end
     end
 
     for part in pairs(adornments) do
-        if not activeParts[part] then
+        if not validParts[part] then
             clearAdornment(part)
         end
     end
 end
 
--- Connect Player.CharacterAdded to immediately apply hitbox when a player respawns
-Players.PlayerAdded:Connect(function(player)
-    player.CharacterAdded:Connect(function()
-        task.wait(0.5)
-        if getgenv().Config.Enabled then
-            updateHitboxes()
+-- Helper to wait for character and hitpart before applying adornment
+local function setupCharacterListener(player)
+    player.CharacterAdded:Connect(function(character)
+        -- Wait for the character's required body part to load
+        local hitPartName = getgenv().Config.Hitpart
+        local bodyPart = character:WaitForChild(hitPartName, 5) -- wait max 5 sec
+        if not bodyPart then
+            -- fallback if not found
+            bodyPart = getValidBodyPart(character, hitPartName)
         end
-    end)
-end)
-
--- Also for existing players
-for _, player in pairs(Players:GetPlayers()) do
-    if player.Character then
-        task.spawn(function()
-            task.wait(0.5)
-            if getgenv().Config.Enabled then
-                updateHitboxes()
-            end
-        end)
-    end
-    player.CharacterAdded:Connect(function()
-        task.wait(0.5)
-        if getgenv().Config.Enabled then
-            updateHitboxes()
+        if bodyPart and getgenv().Config.Enabled then
+            applyAdornmentToPart(bodyPart)
         end
     end)
 end
 
--- Heartbeat for auto update
+-- Setup for all players
+for _, player in pairs(Players:GetPlayers()) do
+    setupCharacterListener(player)
+end
+
+Players.PlayerAdded:Connect(function(player)
+    setupCharacterListener(player)
+end)
+
+-- Update every interval if auto refresh enabled
 RunService.Heartbeat:Connect(function(dt)
-    if not getgenv().Config.Enabled or not getgenv().Config.AutoRefresh then return end
-    accumulatedTime = accumulatedTime + dt
-    if accumulatedTime >= updateInterval then
-        accumulatedTime = 0
-        updateHitboxes()
+    if getgenv().Config.Enabled and getgenv().Config.AutoRefresh then
+        accumulatedTime = accumulatedTime + dt
+        if accumulatedTime >= updateInterval then
+            accumulatedTime = 0
+            updateHitboxes()
+        end
     end
 end)
 
@@ -202,7 +210,7 @@ Section:NewToggle("Auto Refresh", "Keep hitboxes updated", function(state)
     end
 end)
 
--- Start enabled and auto refresh on script load for immediate effect
+-- Start enabled and auto refresh on load
 getgenv().Config.Enabled = true
 getgenv().Config.AutoRefresh = true
 updateHitboxes()
