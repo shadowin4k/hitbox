@@ -97,10 +97,13 @@ local function updateHitboxes()
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= lp then -- optional: skip local player
             if player.Character and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
-                local parts = getAllValidParts(player.Character)
-                for _, part in pairs(parts) do
-                    applyAdornmentToPart(part)
-                    validPartsSet[part] = true
+                local rootPart = player.Character:FindFirstChild("HumanoidRootPart") 
+                    or player.Character:FindFirstChild("Torso") 
+                    or player.Character:FindFirstChild("UpperTorso") -- fallback if needed
+                
+                if rootPart then
+                    applyAdornmentToPart(rootPart)
+                    validPartsSet[rootPart] = true
                 end
             end
         end
